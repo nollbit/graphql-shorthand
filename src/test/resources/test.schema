@@ -1,0 +1,43 @@
+enum DogCommand { SIT, DOWN, HEEL }
+
+type Dog : Pet {
+  name: String!
+  nickname: String
+  barkVolume: Int
+  doesKnowCommand(dogCommand: DogCommand!) : Boolean!
+  isHouseTrained(atOtherHomes: Boolean): Boolean!
+  toys: [String]
+}
+
+interface Sentient {
+  name: String!
+}
+
+interface Pet {
+  name: String!
+}
+
+type Alien : Sentient {
+  name: String!
+  homePlanet: String
+}
+
+type Human : Sentient {
+  name: String!
+}
+
+type Cat : Pet {
+  name: String!
+  nickname: String
+  meowVolume: Int
+}
+
+type Monster {
+  name: String!
+  nickname: String
+  homePlanet: String
+}
+
+union CatOrDog = Cat | Dog
+union DogOrHuman = Dog | Human
+union HumanOrAlien = Human | Alien
