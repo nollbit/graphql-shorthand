@@ -1,13 +1,22 @@
 package se.mjones.graphql.shorthand
 
 import java.io.InputStream
+import java.util
 
+import org.antlr.v4.runtime
 import org.antlr.v4.runtime._
+import org.antlr.v4.runtime.atn.ATNConfigSet
+import org.antlr.v4.runtime.dfa.DFA
 import se.mjones.graphql.shorthand.parser.{GraphQLShorthandParser, GraphQLShorthandLexer}
 import scala.collection.JavaConverters._
 import java.util.{List => JList}
 
-case class Schema(definitions: Seq[Definition])
+import scala.collection.mutable
+
+trait ShorthandResult
+case class SyntaxError(line: Int, charPositionInLine: Int, msg: String) extends ShorthandResult
+case class Schema(definitions: Seq[Definition]) extends ShorthandResult
+
 trait Definition { val name: String }
 case class Enum(name: String, values: Seq[String]) extends Definition
 case class Interface(name: String, fields: Seq[Field]) extends Definition
@@ -26,11 +35,28 @@ object GraphQL {
 case class Parameter(name: String, paramType: GraphQLType, notNull: Boolean)
 case class Field(name: String, fieldType: GraphQLType, parameters: Seq[Parameter], notNull: Boolean)
 
+
+class SyntaxErrorException(line: Int, charPositionInLine: Int, msg: String) extends Exception
+class SyntaxErrorListener extends BaseErrorListener {
+  val syntaxErrors = mutable.MutableList[SyntaxError]()
+
+  override def syntaxError(recognizer: Recognizer[_, _],
+                           offendingSymbol: scala.Any,
+                           line: Int, charPositionInLine: Int,
+                           msg: String, e: RecognitionException) = {
+    throw new SyntaxErrorException(line, charPositionInLine, msg)
+    syntaxErrors += SyntaxError(line, charPositionInLine, msg)
+  }
+}
+
 class Parser {
 
-  def parse(input: InputStream): Schema = {
+  def parse(input: InputStream): ShorthandResult = {
     val lexer = new GraphQLShorthandLexer(new ANTLRInputStream(input))
     val parser = new GraphQLShorthandParser(new CommonTokenStream(lexer))
+    val syntaxErrorListener = new SyntaxErrorListener
+    parser.addErrorListener(syntaxErrorListener)
+
     val defs = parser.schema().definition().asScala
 
     val enums = defs.filter(_.enumDefinition() != null).map { e =>
@@ -140,6 +166,10 @@ class Parser {
 
     val everything = (enums.keys ++ rawUnions.keys ++ rawInterfaces.keys ++ rawTypes.keys).map(getDefinition)
 
-    Schema(everything.toSeq)
+    if (syntaxErrorListener.syntaxErrors.isEmpty) {
+      Schema(everything.toSeq)
+    } else {
+      syntaxErrorListener.syntaxErrors.head
+    }
   }
 }
