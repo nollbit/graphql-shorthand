@@ -1,20 +1,18 @@
 package se.mjones.graphql.shorthand
 
 import java.io.InputStream
-import java.util
 
-import org.antlr.v4.runtime
 import org.antlr.v4.runtime._
-import org.antlr.v4.runtime.atn.ATNConfigSet
-import org.antlr.v4.runtime.dfa.DFA
 import se.mjones.graphql.shorthand.parser.{GraphQLShorthandParser, GraphQLShorthandLexer}
 import scala.collection.JavaConverters._
 import java.util.{List => JList}
 
 import scala.collection.mutable
 
+case class SyntaxError(line: Int, charPositionInLine: Int, msg: String)
+
 trait ShorthandResult
-case class SyntaxError(line: Int, charPositionInLine: Int, msg: String) extends ShorthandResult
+case class SyntaxErrors(errors: Seq[SyntaxError]) extends ShorthandResult
 case class Schema(definitions: Seq[Definition]) extends ShorthandResult
 
 trait Definition { val name: String }
@@ -44,7 +42,6 @@ class SyntaxErrorListener extends BaseErrorListener {
                            offendingSymbol: scala.Any,
                            line: Int, charPositionInLine: Int,
                            msg: String, e: RecognitionException) = {
-    throw new SyntaxErrorException(line, charPositionInLine, msg)
     syntaxErrors += SyntaxError(line, charPositionInLine, msg)
   }
 }
@@ -59,117 +56,117 @@ class Parser {
 
     val defs = parser.schema().definition().asScala
 
-    val enums = defs.filter(_.enumDefinition() != null).map { e =>
-      val names = e.enumDefinition().NAME().asScala.map(_.getSymbol.getText)
-      Enum(names.head, names.tail)
-    }.map(e => (e.name, e)).toMap
-
-    val rawInterfaces = defs.filter(_.interfaceDefinition() != null).map { i =>
-      val d = i.interfaceDefinition()
-      (d.NAME().getSymbol.getText, d)
-    }.toMap
-    val rawUnions = defs.filter(_.unionDefinition() != null).map { i =>
-      val d = i.unionDefinition()
-      (d.NAME(0).getSymbol.getText, d)
-    }.toMap
-    val rawTypes = defs.filter(_.typeDefinition() != null).map { t =>
-      val d = t.typeDefinition()
-      (d.NAME(0).getSymbol.getText, d)
-    }.toMap
-
-    def getEnum(name: String) = enums.get(name)
-
-    def getGraphQLType(t: GraphQLShorthandParser.TypeContext): GraphQLType = {
-      if (t.BOOLEAN() != null) {
-        GraphQL.Boolean()
-      } else if (t.INT() != null) {
-        GraphQL.Int()
-      } else if (t.STRING() != null) {
-        GraphQL.String()
-      } else {
-        val named = t.NAME().getSymbol.getText
-        val d = getDefinition(named)
-        GraphQL.DefinedType(d)
-      }
-    }
-
-    def getFieldType(fieldType: GraphQLShorthandParser.FieldTypeContext) = {
-      val notNull = fieldType.nonNullType() != null
-      val t = if (fieldType.listType() != null) {
-        val inner = getGraphQLType(fieldType.listType().`type`())
-        GraphQL.List(inner)
-      } else {
-        getGraphQLType(fieldType.`type`())
-      }
-      (notNull, t)
-    }
-
-    def getParameters(p:  GraphQLShorthandParser.ParametersContext) = {
-      Option(p).map { p => p.parameter().asScala.map { pCtx =>
-        val name = pCtx.NAME().getSymbol.getText
-        val (notNull, t) = getFieldType(pCtx.fieldType())
-        Parameter(name, t, notNull)
-      }}.getOrElse(Seq.empty)
-    }
-
-    def getFields(fields: JList[GraphQLShorthandParser.FieldContext]) = {
-      fields.asScala.map { fieldCtx =>
-        val name = fieldCtx.NAME().getSymbol.getText
-        val (notNull, t) = getFieldType(fieldCtx.fieldType())
-        val params = getParameters(fieldCtx.parameters())
-
-        Field(name, t, params, notNull)
-      }
-    }
-
-    def getInterface(name: String) = {
-      rawInterfaces.get(name).map { rawInterface =>
-        val fields = getFields(rawInterface.field())
-        Interface(name, fields)
-      }
-    }
-
-    def getType(name: String) = {
-      rawTypes.get(name).map { typeCtx =>
-        val (name, interfaceName) = {
-          val names = typeCtx.NAME().asScala.map(_.getSymbol.getText)
-          (names.head, names.tail.headOption)
-        }
-        val interface = interfaceName.map { interfaceName =>
-          getInterface(interfaceName).getOrElse { throw new Exception(s"No such interface $interfaceName")}
-        }
-
-        val fields = getFields(typeCtx.field())
-
-        Type(name, interface, fields)
-      }
-    }
-
-    def getUnion(name: String) = {
-      rawUnions.get(name).map { unionCtx =>
-        val names = unionCtx.NAME().asScala.map(_.getSymbol.getText)
-        Union(names.head, names.tail.map(getInterfaceOrType))
-      }
-    }
-
-    def getInterfaceOrType(name: String) = {
-      getType(name) orElse getInterface(name) getOrElse {
-        throw new Exception(s"No defined type named $name")
-      }
-    }
-
-    def getDefinition(name: String) = {
-      getUnion(name) orElse getType(name) orElse getInterface(name) orElse getEnum(name) getOrElse {
-        throw new Exception(s"No defined type named $name")
-      }
-    }
-
-    val everything = (enums.keys ++ rawUnions.keys ++ rawInterfaces.keys ++ rawTypes.keys).map(getDefinition)
-
-    if (syntaxErrorListener.syntaxErrors.isEmpty) {
-      Schema(everything.toSeq)
+    if (syntaxErrorListener.syntaxErrors.nonEmpty) {
+      SyntaxErrors(syntaxErrorListener.syntaxErrors)
     } else {
-      syntaxErrorListener.syntaxErrors.head
+      val enums = defs.filter(_.enumDefinition() != null).map { e =>
+        val names = e.enumDefinition().NAME().asScala.map(_.getSymbol.getText)
+        Enum(names.head, names.tail)
+      }.map(e => (e.name, e)).toMap
+
+      val rawInterfaces = defs.filter(_.interfaceDefinition() != null).map { i =>
+        val d = i.interfaceDefinition()
+        (d.NAME().getSymbol.getText, d)
+      }.toMap
+      val rawUnions = defs.filter(_.unionDefinition() != null).map { i =>
+        val d = i.unionDefinition()
+        (d.NAME(0).getSymbol.getText, d)
+      }.toMap
+      val rawTypes = defs.filter(_.typeDefinition() != null).map { t =>
+        val d = t.typeDefinition()
+        (d.NAME(0).getSymbol.getText, d)
+      }.toMap
+
+      def getEnum(name: String) = enums.get(name)
+
+      def getGraphQLType(t: GraphQLShorthandParser.TypeContext): GraphQLType = {
+        if (t.BOOLEAN() != null) {
+          GraphQL.Boolean()
+        } else if (t.INT() != null) {
+          GraphQL.Int()
+        } else if (t.STRING() != null) {
+          GraphQL.String()
+        } else {
+          val named = t.NAME().getSymbol.getText
+          val d = getDefinition(named)
+          GraphQL.DefinedType(d)
+        }
+      }
+
+      def getFieldType(fieldType: GraphQLShorthandParser.FieldTypeContext) = {
+        val notNull = fieldType.nonNullType() != null
+        val t = if (fieldType.listType() != null) {
+          val inner = getGraphQLType(fieldType.listType().`type`())
+          GraphQL.List(inner)
+        } else {
+          getGraphQLType(fieldType.`type`())
+        }
+        (notNull, t)
+      }
+
+      def getParameters(p:  GraphQLShorthandParser.ParametersContext) = {
+        Option(p).map { p => p.parameter().asScala.map { pCtx =>
+          val name = pCtx.NAME().getSymbol.getText
+          val (notNull, t) = getFieldType(pCtx.fieldType())
+          Parameter(name, t, notNull)
+        }}.getOrElse(Seq.empty)
+      }
+
+      def getFields(fields: JList[GraphQLShorthandParser.FieldContext]) = {
+        fields.asScala.map { fieldCtx =>
+          val name = fieldCtx.NAME().getSymbol.getText
+          val (notNull, t) = getFieldType(fieldCtx.fieldType())
+          val params = getParameters(fieldCtx.parameters())
+
+          Field(name, t, params, notNull)
+        }
+      }
+
+      def getInterface(name: String) = {
+        rawInterfaces.get(name).map { rawInterface =>
+          val fields = getFields(rawInterface.field())
+          Interface(name, fields)
+        }
+      }
+
+      def getType(name: String) = {
+        rawTypes.get(name).map { typeCtx =>
+          val (name, interfaceName) = {
+            val names = typeCtx.NAME().asScala.map(_.getSymbol.getText)
+            (names.head, names.tail.headOption)
+          }
+          val interface = interfaceName.map { interfaceName =>
+            getInterface(interfaceName).getOrElse { throw new Exception(s"No such interface $interfaceName")}
+          }
+
+          val fields = getFields(typeCtx.field())
+
+          Type(name, interface, fields)
+        }
+      }
+
+      def getUnion(name: String) = {
+        rawUnions.get(name).map { unionCtx =>
+          val names = unionCtx.NAME().asScala.map(_.getSymbol.getText)
+          Union(names.head, names.tail.map(getInterfaceOrType))
+        }
+      }
+
+      def getInterfaceOrType(name: String) = {
+        getType(name) orElse getInterface(name) getOrElse {
+          throw new Exception(s"No defined type named $name")
+        }
+      }
+
+      def getDefinition(name: String) = {
+        getUnion(name) orElse getType(name) orElse getInterface(name) orElse getEnum(name) getOrElse {
+          throw new Exception(s"No defined type named $name")
+        }
+      }
+
+      val everything = (enums.keys ++ rawUnions.keys ++ rawInterfaces.keys ++ rawTypes.keys).map(getDefinition)
+
+      Schema(everything.toSeq)
     }
   }
 }

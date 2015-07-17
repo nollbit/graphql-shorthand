@@ -12,11 +12,19 @@ class ParserSpec extends FlatSpec with Matchers {
   def parseString(s: String) = parser.parse(new ByteArrayInputStream(s.getBytes(UTF8)))
 
   "The Parser" should "be able to parse an enum" in {
-    parseString("enum") shouldBe a [SyntaxError]
-    parseString("enum Johan") shouldBe a [SyntaxError]
-    parseString("enum Johan { }") shouldBe a [SyntaxError]
+    parseString("enum") shouldBe a [SyntaxErrors]
+    parseString("enum Johan") shouldBe a [SyntaxErrors]
+    parseString("enum Johan { }") shouldBe a [SyntaxErrors]
     parseString("enum Johan { OPT1 }") shouldBe Schema(Seq(Enum("Johan", Seq("OPT1"))))
     parseString("enum Johan { OPT1, OPT2 }") shouldBe Schema(Seq(Enum("Johan", Seq("OPT1", "OPT2"))))
+  }
+
+  it should "be able to parse an interface" in {
+    parseString("interface") shouldBe a [SyntaxErrors]
+    parseString("interface Johan") shouldBe a [SyntaxErrors]
+    parseString("interface Johan { }") shouldBe a [SyntaxErrors]
+    parseString("interface Johan { OPT1 }") shouldBe Schema(Seq(Enum("Johan", Seq("OPT1"))))
+    parseString("interface Johan { OPT1, OPT2 }") shouldBe Schema(Seq(Enum("Johan", Seq("OPT1", "OPT2"))))
   }
 
   it should "be able to parse a simple schema" in {
