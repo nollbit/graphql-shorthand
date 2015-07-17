@@ -20,11 +20,11 @@ unionDefinition
     ;
 
 typeDefinition
-    : 'type' NAME (':' NAME)? '{' field* '}'
+    : 'type' NAME (':' NAME)? '{' field+ '}'
     ;
 
 interfaceDefinition
-    : 'interface' NAME '{' field* '}'
+    : 'interface' NAME '{' field+ '}'
     ;
 
 field
