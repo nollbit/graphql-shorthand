@@ -18,7 +18,7 @@ case class Schema(definitions: Seq[Definition]) extends ShorthandResult
 trait Definition { val name: String }
 case class Enum(name: String, values: Seq[String]) extends Definition
 case class Interface(name: String, fields: Seq[Field]) extends Definition
-case class Type(name: String, interface: Option[Interface], fields: Seq[Field]) extends Definition
+case class Type(name: String, fields: Seq[Field], interface: Option[Interface] = None) extends Definition
 case class Union(name: String, types: Seq[Definition]) extends Definition
 
 trait GraphQLType
@@ -30,8 +30,8 @@ object GraphQL {
   case class List(inner: GraphQLType) extends GraphQLType
 }
 
-case class Parameter(name: String, paramType: GraphQLType, notNull: Boolean)
-case class Field(name: String, fieldType: GraphQLType, parameters: Seq[Parameter], notNull: Boolean)
+case class Parameter(name: String, paramType: GraphQLType, notNull: Boolean = false)
+case class Field(name: String, fieldType: GraphQLType, parameters: Seq[Parameter] = Seq.empty, notNull: Boolean = false)
 
 
 class SyntaxErrorException(line: Int, charPositionInLine: Int, msg: String) extends Exception
@@ -141,7 +141,7 @@ class Parser {
 
           val fields = getFields(typeCtx.field())
 
-          Type(name, interface, fields)
+          Type(name, fields, interface = interface)
         }
       }
 
