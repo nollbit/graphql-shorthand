@@ -39,6 +39,10 @@ class ParserSpec extends FlatSpec with Matchers {
     val interfaceSchema = parseString("interface JohansInterface { name: String } type Johan : JohansInterface { name: String leInt: Int }")
     val interfacedType = interfaceSchema.asInstanceOf[Schema].definitions.collectFirst { case t:Type => t}.get
     interfacedType shouldBe Type("Johan",Seq(Field("name",GraphQL.String()), Field("leInt",GraphQL.Int())),Some(Interface("JohansInterface",Seq(Field("name",GraphQL.String())))))
+
+    val brokenSchema = parseString("type Johan : JohansMissingInterface { name: String leInt: Int }")
+    brokenSchema shouldBe UnresolvedError(1, 0, "No such interface JohansMissingInterface")
+
   }
 
   it should "be able to parse fields" in {
@@ -54,15 +58,10 @@ class ParserSpec extends FlatSpec with Matchers {
 
   it should "be able to parse a simple schema" in {
     val parser = new Parser()
-    /*
-    val schema = parser.parse(getClass.getResourceAsStream("/test.schema"))
+    val schema = parser.parse(getClass.getResourceAsStream("/test.schema")).asInstanceOf[Schema]
 
-    val dogCommand = Enum("DogCommand",Seq("SIT", "DOWN", "HEEL"))
-    val pet = Interface("Pet", Seq(Field("name", GraphQL.String(), List(), notNull = true)))
-    val sentient = Interface("Sentient", Seq(Field("name",GraphQL.String(), List(), notNull = true)))
-    val alien = Type("Alien",Some(sentient),Seq(Field("name",GraphQL.String(),List(),notNull = true), Field("homePlanet",GraphQL.String(),List(),notNull = false)))
+    schema.definitions.size shouldBe 11
+    schema.definitions.find(_.name == "Monster") shouldBe Some(Type("Monster",Seq(Field("name",GraphQL.String(), notNull = true), Field("nickname",GraphQL.String()), Field("homePlanet",GraphQL.String()))))
 
-    schema.definitions.foreach(println)
-*/
   }
 }
